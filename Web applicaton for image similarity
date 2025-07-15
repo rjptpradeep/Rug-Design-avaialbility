@@ -1,0 +1,58 @@
+import streamlit as st
+import os
+import pandas as pd
+import numpy as np
+from PIL import Image
+from sklearn.metrics.pairwise import cosine_similarity
+from tensorflow.keras.applications.vgg16 import VGG16, preprocess_input
+from tensorflow.keras.preprocessing import image
+import tempfile
+
+# Load model
+model = VGG16(weights='imagenet', include_top=False, pooling='avg')
+
+# Get feature vector
+def get_feature_vector_pil(img):
+    img = img.resize((224, 224))
+    x = image.img_to_array(img)
+    x = np.expand_dims(x, axis=0)
+    x = preprocess_input(x)
+    features = model.predict(x)
+    return features.flatten()
+
+# Load CSV of precomputed features
+def load_features(csv_path):
+    df = pd.read_csv(csv_path)
+    features = df.iloc[:, 1:].values
+    filenames = df['filename'].values
+    return features, filenames
+
+# Main app
+def main():
+    st.title("🔍 Image Similarity Finder")
+
+    uploaded_file = st.file_uploader("Upload an image to find its closest match", type=["jpg", "jpeg", "png"])
+    
+    if uploaded_file is not None:
+        img = Image.open(uploaded_file)
+        st.image(img, caption="Uploaded Image", use_column_width=True)
+
+        with st.spinner('Analyzing...'):
+            uploaded_features = get_feature_vector_pil(img).reshape(1, -1)
+            features, filenames = load_features("vgg16_image_features.csv")
+
+            similarities = cosine_similarity(uploaded_features, features)[0]
+            best_match_idx = np.argmax(similarities)
+            best_match = filenames[best_match_idx]
+            similarity_score = similarities[best_match_idx]
+
+        st.success(f"✅ Closest Match: {best_match} (Score: {similarity_score:.4f})")
+
+        matched_img_path = os.path.join("your_image_folder_path_here", best_match)
+        if os.path.exists(matched_img_path):
+            st.image(matched_img_path, caption=f"Matched Image: {best_match}", use_column_width=True)
+        else:
+            st.warning("Matched image not found in folder!")
+
+if __name__ == "__main__":
+    main()
